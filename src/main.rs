@@ -1,5 +1,6 @@
 use std::{thread};
 use std::collections::HashMap;
+use tokio::runtime::Runtime;
 
 use futures::stream::StreamExt;
 
@@ -12,11 +13,11 @@ mod roninrest;
 type WorkerId = usize;
 
 struct Worker {
-    handle: thread::JoinHandle<()>,
+    handle: tokio::task::JoinHandle<()>,
 }
 
 impl Worker {
-    fn new(handle: thread::JoinHandle<()>) -> Self {
+    fn new(handle: tokio::task::JoinHandle<()>) -> Self {
         Worker {
             handle
         }
@@ -26,21 +27,27 @@ impl Worker {
 struct DecodeParameter {
     tx: Transaction,
     rr: Adapter,
-    db: Database
+    db: Database,
 }
 
 struct ThreadPool {
     max_threads: usize,
     worker: HashMap<WorkerId, Worker>,
     current_thread_id: usize,
+    runtime: Runtime
 }
 
 impl ThreadPool {
     fn new(max_threads: usize) -> Self {
+
+        let mut runtime = tokio::runtime::Builder::new_multi_thread()
+            .build().unwrap();
+
         ThreadPool {
             max_threads,
             worker: HashMap::new(),
             current_thread_id: 0,
+            runtime
         }
     }
 
@@ -80,9 +87,10 @@ impl ThreadPool {
     fn spawn(&mut self, parameter: DecodeParameter, logic: fn(DecodeParameter)) -> Option<WorkerId> {
         if self.can_spawn_new() {
             let worker_id: WorkerId = self.current_thread_id;
-            let thread = thread::Builder::new().name(format!("thread-decoder-{}", parameter.tx.hash)).spawn(move || {
+
+            let thread = tokio::task::spawn(async move {
                 logic(parameter)
-            }).unwrap();
+            });
 
             self.worker.insert(worker_id, Worker::new(thread));
             self.current_thread_id += 1;
