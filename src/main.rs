@@ -136,7 +136,7 @@ async fn main() {
         );
 
         println!("Vec Len: {}", t_pool.len());
-        if t_pool.len() > 20000 {
+        if t_pool.len() > 1000 {
             break;
         }
     }
