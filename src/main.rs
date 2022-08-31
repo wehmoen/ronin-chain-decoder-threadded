@@ -142,7 +142,7 @@ async fn main() {
     }
 
     for task in t_pool {
-        if let Ok(_) = task.await {println!("Task completed")}
+        if let Ok(_) = task.await {}
     }
 
     // loop {
