@@ -134,6 +134,8 @@ async fn main() {
         t_pool.push(
             task
         );
+
+        println!("Vec Len: {}", t_pool.len());
         if t_pool.len() > 100 {
             break;
         }
