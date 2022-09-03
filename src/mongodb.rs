@@ -33,13 +33,7 @@ impl Database {
     }
 
     pub async fn last_block(&self) -> u64 {
-        let options = FindOneOptions::builder().sort(doc! {
-            "blockNumber": -1
-        }).build();
-        match self.decoded_transactions.find_one(None, options).await.unwrap() {
-            None => 0,
-            Some(tx) => tx.block_number
-        }
+        0
     }
 
     pub async fn one_transaction(&self, last_block: u64) -> mongodb::error::Result<Option<Transaction>> {

@@ -20,7 +20,6 @@ struct Opt {
     /// Use localhost
     #[structopt(short, long)]
     local: Option<bool>,
-
 }
 
 async fn thread_work(params: DecodeParameter) {
