@@ -114,7 +114,7 @@ async fn main() {
         }
 
         things.clear();
-        println!("Done: {}", index * limit as i32);
+        println!("Done: {}", index * 100);
 
         if close_on_loop_end {
             break;
