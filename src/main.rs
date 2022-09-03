@@ -78,7 +78,7 @@ async fn main() {
 
     let last_block = db.last_block().await;
 
-    let mut txs = db.transactions(last_block).await.expect("Failed to create transaction cursor");
+    // let mut txs = db.transactions(last_block).await.expect("Failed to create transaction cursor");
 
     // let max_threads = thread::available_parallelism().unwrap().get();
 
