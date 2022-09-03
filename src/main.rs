@@ -7,6 +7,7 @@ use aws_config::SdkConfig;
 use aws_sdk_s3::{Client as S3Client, Region, types::ByteStream};
 use futures::stream::StreamExt;
 use structopt::StructOpt;
+use tokio::task::JoinHandle;
 
 use crate::mongodb::{Database, Transaction};
 use crate::roninrest::{Adapter, RRDecodedTransaction};
@@ -88,21 +89,37 @@ async fn main() {
         .thread_name("decoder-thread")
         .build().unwrap();
 
-    let mut index: isize = 0;
-    let tx = db.one_transaction(last_block).await.unwrap().unwrap();
+    let mut index: i32 = 0;
+    let limit: usize = 100;
+
+    let mut things: Vec<JoinHandle<()>> = vec![];
+    let mut close_on_loop_end: bool = false;
     loop {
-        let task = thread_work(DecodeParameter
-        {
-            tx: tx.clone(),
-            shared_config: shared_config.clone(),
-            local: local.unwrap_or(false),
-        });
+        while things.len()  < limit {
+            println!("Pending: {}", things.len());
+            if let tx = db.one_transaction(last_block).await.unwrap().unwrap() {
+                let task = thread_work(DecodeParameter
+                {
+                    tx: tx.clone(),
+                    shared_config: shared_config.clone(),
+                    local: local.unwrap_or(false),
+                });
 
-        rt.spawn(task);
+                things.push(rt.spawn(task));
+                index += 1;
+            } else {
+                close_on_loop_end = true
+            }
+        }
 
-        if index > 10000 {
+        for thing in things.iter_mut() {
+            thing.await.unwrap();
+        }
+
+        if close_on_loop_end || index > 200 {
             break;
         }
+
     }
 
     // while let Some(tx) = txs.next().await {
