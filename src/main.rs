@@ -1,7 +1,8 @@
-
+use std::collections::HashMap;
 use std::thread;
 
 use aws_config::meta::region::RegionProviderChain;
+use aws_config::profile::Property;
 use aws_config::SdkConfig;
 use aws_sdk_s3::{Client as S3Client, Region, types::ByteStream};
 use futures::stream::StreamExt;
@@ -16,19 +17,14 @@ mod roninrest;
 struct DecodeParameter {
     tx: Transaction,
     shared_config: SdkConfig,
-    local: bool
+    local: bool,
 }
 
 #[derive(Debug, StructOpt)]
 struct Opt {
-    /// The AWS Region.
-    #[structopt(short, long)]
-    region: Option<String>,
-
     /// Use localhost
     #[structopt(short, long)]
     local: Option<bool>,
-
 
 }
 
@@ -67,21 +63,10 @@ async fn thread_work(params: DecodeParameter) {
 
 #[tokio::main]
 async fn main() {
-    let Opt { region, local } = Opt::from_args();
+    let Opt { local } = Opt::from_args();
 
-    let region_provider = RegionProviderChain::first_try(region.map(Region::new))
-        .or_default_provider()
-        .or_else(Region::new("eu-central-1"));
 
-    let shared_config = aws_config::from_env()
-        .credentials_provider(
-            aws_config::profile::ProfileFileCredentialsProvider::builder()
-                .profile_name("ronin")
-                .build()
-        )
-        .region(region_provider)
-        .load()
-        .await;
+    let shared_config = aws_config::load_from_env().await;
 
 
     let db = Database::new("mongodb://127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+1.5.4", Some("ronin")).await;
@@ -103,7 +88,7 @@ async fn main() {
         {
             tx,
             shared_config: shared_config.clone(),
-            local: local.unwrap_or(false)
+            local: local.unwrap_or(false),
         });
 
         rt.spawn(task);
