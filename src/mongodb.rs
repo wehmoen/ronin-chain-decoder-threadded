@@ -51,7 +51,7 @@ impl Database {
         //         "block": 1i64
         //     })
         //     .build();
-        self.transactions.find_one(doc! {
+        self.transactions.find_one_and_delete(doc! {
             "block": {
                 "$gt": last_block as i64
             }
