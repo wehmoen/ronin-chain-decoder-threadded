@@ -58,6 +58,10 @@ async fn thread_work(params: DecodeParameter) {
         .send()
         .await.expect("Failed to upload file");
 
+    drop(s3_client);
+    drop(rr);
+    drop(decoded);
+
     println!("DONE: {}", key);
 }
 
@@ -78,6 +82,8 @@ async fn main() {
     // let max_threads = thread::available_parallelism().unwrap().get();
 
     let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(16)
+        .max_blocking_threads(32)
         .enable_io().enable_time()
         .thread_name("decoder-thread")
         .build().unwrap();
