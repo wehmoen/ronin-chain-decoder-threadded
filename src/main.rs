@@ -26,7 +26,11 @@ struct Opt {
 async fn thread_work(params: DecodeParameter) {
     let s3_client = S3Client::new(&params.shared_config);
 
-    let key = &params.tx.hash.clone()[2..];
+    let key = [
+        [&params.tx.block.to_string(), &params.tx.hash.clone()[2..]].join("/"),
+        "json".into()
+    ].join(".");
+    let key = key.as_str();
 
     let mut rr = Adapter::new();
 
