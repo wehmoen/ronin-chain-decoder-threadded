@@ -90,13 +90,12 @@ async fn main() {
         .build().unwrap();
 
     let mut index: i32 = 0;
-    let limit: usize = 100;
+    let limit: usize = 500;
 
     let mut things: Vec<JoinHandle<()>> = vec![];
     let mut close_on_loop_end: bool = false;
     loop {
         while things.len()  < limit {
-            println!("Pending: {}", things.len());
             if let tx = db.one_transaction(last_block).await.unwrap().unwrap() {
                 let task = thread_work(DecodeParameter
                 {
