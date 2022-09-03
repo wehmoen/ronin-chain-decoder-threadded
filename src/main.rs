@@ -113,7 +113,7 @@ async fn main() {
         }
 
         for thing in things.iter_mut() {
-            thing.await.unwrap();
+            thing.await.ok();
         }
 
         if close_on_loop_end || index > 200 {
