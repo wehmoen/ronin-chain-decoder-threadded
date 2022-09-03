@@ -82,23 +82,40 @@ async fn main() {
     // let max_threads = thread::available_parallelism().unwrap().get();
 
     let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(16)
-        .max_blocking_threads(32)
+        .worker_threads(8)
+        .max_blocking_threads(8)
         .enable_io().enable_time()
         .thread_name("decoder-thread")
         .build().unwrap();
 
-    while let Some(tx) = txs.next().await {
-        let tx = tx.unwrap();
+    let mut index: isize = 0;
+    let tx = db.one_transaction(last_block).await.unwrap().unwrap();
+    loop {
         let task = thread_work(DecodeParameter
         {
-            tx,
+            tx: tx.clone(),
             shared_config: shared_config.clone(),
             local: local.unwrap_or(false),
         });
 
         rt.spawn(task);
+
+        if index > 10000 {
+            break;
+        }
     }
+
+    // while let Some(tx) = txs.next().await {
+    //     let tx = tx.unwrap();
+    //     let task = thread_work(DecodeParameter
+    //     {
+    //         tx,
+    //         shared_config: shared_config.clone(),
+    //         local: local.unwrap_or(false),
+    //     });
+    //
+    //     rt.spawn(task);
+    // }
 
 
     println!("DONE")

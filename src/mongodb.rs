@@ -5,7 +5,7 @@ use mongodb::results::{InsertManyResult};
 use serde::{Deserialize, Serialize};
 use crate::roninrest::RRDecodedTransaction;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Transaction {
     pub from: String,
     pub to: String,
@@ -13,6 +13,7 @@ pub struct Transaction {
     pub block: u32,
     pub created_at: Option<DateTime>,
 }
+
 
 #[derive(Clone)]
 pub struct Database {
@@ -40,6 +41,21 @@ impl Database {
             None => 0,
             Some(tx) => tx.block_number
         }
+    }
+
+    pub async fn one_transaction(&self, last_block: u64) -> mongodb::error::Result<Option<Transaction>> {
+        // let options = FindOptions::builder()
+        //     .no_cursor_timeout(Some(true))
+        //     .batch_size(Some(100u32))
+        //     .sort(doc! {
+        //         "block": 1i64
+        //     })
+        //     .build();
+        self.transactions.find_one(doc! {
+            "block": {
+                "$gt": last_block as i64
+            }
+        }, None).await
     }
 
     pub async fn transactions(&self, last_block: u64) -> mongodb::error::Result<Cursor<Transaction>> {
