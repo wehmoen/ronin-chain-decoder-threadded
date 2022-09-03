@@ -1,11 +1,5 @@
-use std::collections::HashMap;
-use std::thread;
-
-use aws_config::meta::region::RegionProviderChain;
-use aws_config::profile::Property;
 use aws_config::SdkConfig;
-use aws_sdk_s3::{Client as S3Client, Region, types::ByteStream};
-use futures::stream::StreamExt;
+use aws_sdk_s3::{Client as S3Client, types::ByteStream};
 use structopt::StructOpt;
 use tokio::task::JoinHandle;
 
@@ -68,17 +62,11 @@ async fn thread_work(params: DecodeParameter) {
 async fn main() {
     let Opt { local } = Opt::from_args();
 
-
     let shared_config = aws_config::load_from_env().await;
-
 
     let db = Database::new("mongodb://127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+1.5.4", Some("ronin")).await;
 
     let last_block = db.last_block().await;
-
-    // let mut txs = db.transactions(last_block).await.expect("Failed to create transaction cursor");
-
-    // let max_threads = thread::available_parallelism().unwrap().get();
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(4)
@@ -94,7 +82,7 @@ async fn main() {
     let mut close_on_loop_end: bool = false;
     loop {
         while things.len()  < limit {
-            if let tx = db.one_transaction(last_block).await.unwrap().unwrap() {
+            if let Some(tx) = db.one_transaction(last_block).await.unwrap() {
                 let task = thread_work(DecodeParameter
                 {
                     tx: tx.clone(),
