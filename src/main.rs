@@ -116,6 +116,8 @@ async fn main() {
             thing.await.ok();
         }
 
+        things.clear();
+
         if close_on_loop_end || index > 200 {
             break;
         }
