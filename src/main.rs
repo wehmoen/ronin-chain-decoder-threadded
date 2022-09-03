@@ -1,9 +1,11 @@
-use std::{io, thread};
-use std::collections::HashMap;
 
-use tokio::runtime::Runtime;
+use std::thread;
 
-use futures::stream::{StreamExt, TryStreamExt};
+use aws_config::meta::region::RegionProviderChain;
+use aws_config::SdkConfig;
+use aws_sdk_s3::{Client as S3Client, Region, types::ByteStream};
+use futures::stream::StreamExt;
+use structopt::StructOpt;
 
 use crate::mongodb::{Database, Transaction};
 use crate::roninrest::{Adapter, RRDecodedTransaction};
@@ -11,161 +13,102 @@ use crate::roninrest::{Adapter, RRDecodedTransaction};
 mod mongodb;
 mod roninrest;
 
-type WorkerId = usize;
-//
-// struct Worker {
-//     handle: task::JoinHandle<()>,
-// }
-//
-// impl Worker {
-//     fn new(handle: task::JoinHandle<()>) -> Self {
-//         Worker {
-//             handle
-//         }
-//     }
-// }
-//
-// struct DecodeParameter {
-//     tx: Transaction,
-//     rr: Adapter,
-//     db: Database,
-// }
-//
-// struct ThreadPool {
-//     max_threads: usize,
-//     worker: HashMap<WorkerId, Worker>,
-//     current_thread_id: usize,
-//     runtime: Runtime
-// }
-//
-// impl ThreadPool {
-//     fn new(max_threads: usize) -> Self {
-//
-//         let mut runtime = tokio::runtime::Builder::new_multi_thread()
-//             .build().unwrap();
-//
-//         ThreadPool {
-//             max_threads,
-//             worker: HashMap::new(),
-//             current_thread_id: 0,
-//             runtime
-//         }
-//     }
-//
-//     fn size(&self) -> usize {
-//         self.worker.len()
-//     }
-//
-//     async fn check_completion(&mut self) {
-//         let mut threads_to_remove: Vec<WorkerId> = vec![];
-//         for worker in &self.worker {
-//             if worker.1.handle.is_finished() {
-//                 threads_to_remove.push(*worker.0);
-//             }
-//         }
-//
-//         for thread in threads_to_remove {
-//             self.worker.remove(&thread);
-//         }
-//
-//         println!("Running threads: {:?}", self.worker.keys());
-//     }
-//
-//     fn can_spawn_new(&mut self) -> bool {
-//         self.check_completion();
-//         self.worker.len() < self.max_threads
-//     }
-//
-//     fn finish(&mut self) {
-//         loop {
-//             self.check_completion();
-//             if self.size() == 0 {
-//                 break;
-//             }
-//         }
-//     }
-//
-//     fn spawn(&mut self, parameter: DecodeParameter, logic: fn(DecodeParameter)) -> Option<WorkerId> {
-//         if self.can_spawn_new() {
-//             let worker_id: WorkerId = self.current_thread_id;
-//
-//             let thread = task::spawn(async move {
-//                 logic(parameter)
-//             });
-//
-//             self.worker.insert(worker_id, Worker::new(thread));
-//             self.current_thread_id += 1;
-//             return Some(worker_id);
-//         }
-//         None
-//     }
-// }
-
-async fn do_stuff(tx: Transaction, rr: Adapter, db: Database) {
-    let decoded: RRDecodedTransaction = RRDecodedTransaction {
-        from: tx.from,
-        to: tx.to,
-        hash: tx.hash.clone(),
-        block_number: tx.block as u64,
-        input: Some(rr.decode_method(&tx.hash).await),
-        output: Some(rr.decode_receipt(&tx.hash).await),
-    };
-
-    db.insert_decoded(&vec![decoded]).await.expect("Failed to insert tx to db!");
+struct DecodeParameter {
+    tx: Transaction,
+    shared_config: SdkConfig,
+    local: bool
 }
 
-#[tokio::main(worker_threads = 32)]
-async fn main() {
-    let db = Database::new("mongodb://127.0.0.1:27017", Some("ronin")).await;
+#[derive(Debug, StructOpt)]
+struct Opt {
+    /// The AWS Region.
+    #[structopt(short, long)]
+    region: Option<String>,
+
+    /// Use localhost
+    #[structopt(short, long)]
+    local: Option<bool>,
+
+
+}
+
+async fn thread_work(params: DecodeParameter) {
+    let s3_client = S3Client::new(&params.shared_config);
+
+    let key = &params.tx.hash.clone()[2..];
+
     let mut rr = Adapter::new();
-    rr.host = "http://localhost:3000".into();
+
+    if params.local {
+        rr.host = "http://localhost:3000".into();
+    }
+
+    let decoded = RRDecodedTransaction {
+        from: params.tx.from,
+        to: params.tx.to,
+        block_number: params.tx.block as u64,
+        input: Some(rr.decode_method(&params.tx.hash).await),
+        output: Some(rr.decode_receipt(&params.tx.hash).await),
+        hash: params.tx.hash,
+    };
+
+    let json_string = serde_json::to_string(&decoded).unwrap();
+
+    s3_client
+        .put_object()
+        .bucket("ronindecode")
+        .key(key)
+        .body(ByteStream::from(json_string.into_bytes()))
+        .send()
+        .await.expect("Failed to upload file");
+
+    println!("DONE: {}", key);
+}
+
+#[tokio::main]
+async fn main() {
+    let Opt { region, local } = Opt::from_args();
+
+    let region_provider = RegionProviderChain::first_try(region.map(Region::new))
+        .or_default_provider()
+        .or_else(Region::new("eu-central-1"));
+
+    let shared_config = aws_config::from_env()
+        .credentials_provider(
+            aws_config::profile::ProfileFileCredentialsProvider::builder()
+                .profile_name("ronin")
+                .build()
+        )
+        .region(region_provider)
+        .load()
+        .await;
+
+
+    let db = Database::new("mongodb://127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+1.5.4", Some("ronin")).await;
 
     let last_block = db.last_block().await;
 
     let mut txs = db.transactions(last_block).await.expect("Failed to create transaction cursor");
 
     // let max_threads = thread::available_parallelism().unwrap().get();
-    // let mut pool = ThreadPool::new(max_threads);
 
-    let mut t_pool = vec![];
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_io().enable_time()
+        .thread_name("decoder-thread")
+        .build().unwrap();
 
-    while let Some(tx) = txs.try_next().await.unwrap() {
-        let task = tokio::spawn(do_stuff(tx, rr.clone(), db.clone()));
-        t_pool.push(
-            task
-        );
+    while let Some(tx) = txs.next().await {
+        let tx = tx.unwrap();
+        let task = thread_work(DecodeParameter
+        {
+            tx,
+            shared_config: shared_config.clone(),
+            local: local.unwrap_or(false)
+        });
 
-        println!("Vec Len: {}", t_pool.len());
-        if t_pool.len() > 1000 {
-            break;
-        }
+        rt.spawn(task);
     }
 
-    for task in t_pool {
-        if let Ok(_) = task.await {}
-    }
-
-    // loop {
-    //     if pool.can_spawn_new() {
-    //         if let Some(tx) = txs.next().await {
-    //             let tx = tx.unwrap();
-    //             pool.spawn(
-    //                 DecodeParameter { tx, rr: rr.clone(), db: Database::new("mongodb://127.0.0.1:27017", Some("ronin")).await },
-    //                 |p| {
-    //                     _ = async {
-    //
-    //                     };
-    //                 }
-    //             );
-    //         }
-    //     }
-    //
-    //     if pool.size() == 0 {
-    //         break;
-    //     }
-    // }
-
-    // pool.finish();
 
     println!("DONE")
 }
