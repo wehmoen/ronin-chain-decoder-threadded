@@ -62,8 +62,6 @@ async fn thread_work(params: DecodeParameter) {
     drop(s3_client);
     drop(rr);
     drop(decoded);
-
-    println!("DONE: {}", key);
 }
 
 #[tokio::main]
@@ -116,8 +114,9 @@ async fn main() {
         }
 
         things.clear();
+        println!("Done: {}", index * limit as i32);
 
-        if close_on_loop_end || index > 200 {
+        if close_on_loop_end {
             break;
         }
 
