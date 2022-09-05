@@ -1,8 +1,6 @@
 use mongodb::{Client, Collection};
 use mongodb::bson::{DateTime, doc};
-use mongodb::options::{FindOneOptions};
 use serde::{Deserialize, Serialize};
-use crate::roninrest::RRDecodedTransaction;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Transaction {
@@ -17,7 +15,6 @@ pub struct Transaction {
 #[derive(Clone)]
 pub struct Database {
     transactions: Collection<Transaction>,
-    decoded_transactions: Collection<RRDecodedTransaction>,
 }
 
 impl Database {
@@ -25,22 +22,12 @@ impl Database {
         let client = Client::with_uri_str(db_uri).await.unwrap();
         let database = client.database(db_name.unwrap_or("ronin"));
         let transactions = database.collection::<Transaction>("transactions");
-        let decoded_transactions = database.collection::<RRDecodedTransaction>("decoded_transactions");
         Database {
             transactions,
-            decoded_transactions,
         }
     }
 
-    pub async fn last_block(&self) -> u64 {
-        0
-    }
-
-    pub async fn one_transaction(&self, last_block: u64) -> mongodb::error::Result<Option<Transaction>> {
-        self.transactions.find_one_and_delete(doc! {
-            "block": {
-                "$gt": last_block as i64
-            }
-        }, None).await
+    pub async fn one_transaction(&self) -> mongodb::error::Result<Option<Transaction>> {
+        self.transactions.find_one_and_delete(doc!{}, None).await
     }
 }

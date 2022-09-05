@@ -1,5 +1,3 @@
-use aws_config::SdkConfig;
-use aws_sdk_s3::{Client as S3Client, types::ByteStream};
 use structopt::StructOpt;
 use tokio::task::JoinHandle;
 
@@ -11,7 +9,7 @@ mod roninrest;
 
 struct DecodeParameter {
     tx: Transaction,
-    shared_config: SdkConfig,
+    // shared_config: SdkConfig,
     local: bool,
 }
 
@@ -20,13 +18,15 @@ struct Opt {
     /// Use localhost
     #[structopt(short, long)]
     local: Option<bool>,
+
+    ///DB Name
+    #[structopt(short, long, default_value="ronin")]
+    db_name: String
 }
 
 async fn thread_work(params: DecodeParameter) {
-    let s3_client = S3Client::new(&params.shared_config);
-
     let key = [
-        [&params.tx.block.to_string(), &params.tx.hash.clone()[2..]].join("/"),
+        ["out", &params.tx.block.to_string(), &params.tx.hash.clone()[2..]].join("/"),
         "json".into()
     ].join(".");
     let key = key.as_str();
@@ -48,28 +48,22 @@ async fn thread_work(params: DecodeParameter) {
 
     let json_string = serde_json::to_string(&decoded).unwrap();
 
-    s3_client
-        .put_object()
-        .bucket("ronindecode")
-        .key(key)
-        .body(ByteStream::from(json_string.into_bytes()))
-        .send()
-        .await.expect("Failed to upload file");
+    std::fs::write(&key, json_string).unwrap();
 
-    drop(s3_client);
     drop(rr);
     drop(decoded);
 }
 
 #[tokio::main]
 async fn main() {
-    let Opt { local } = Opt::from_args();
+    let Opt { local, db_name } = Opt::from_args();
 
-    let shared_config = aws_config::load_from_env().await;
+    let out_path = std::path::Path::new("out");
+    if !out_path.exists() {
+        std::fs::create_dir_all(&out_path).unwrap();
+    }
 
-    let db = Database::new("mongodb://127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+1.5.4", Some("ronin")).await;
-
-    let last_block = db.last_block().await;
+    let db = Database::new("mongodb://127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+1.5.4", Some(&db_name)).await;
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(4)
@@ -85,11 +79,10 @@ async fn main() {
     let mut close_on_loop_end: bool = false;
     loop {
         while things.len()  < limit {
-            if let Some(tx) = db.one_transaction(last_block).await.unwrap() {
+            if let Some(tx) = db.one_transaction().await.unwrap() {
                 let task = thread_work(DecodeParameter
                 {
                     tx: tx.clone(),
-                    shared_config: shared_config.clone(),
                     local: local.unwrap_or(false),
                 });
 
@@ -112,19 +105,6 @@ async fn main() {
         }
 
     }
-
-    // while let Some(tx) = txs.next().await {
-    //     let tx = tx.unwrap();
-    //     let task = thread_work(DecodeParameter
-    //     {
-    //         tx,
-    //         shared_config: shared_config.clone(),
-    //         local: local.unwrap_or(false),
-    //     });
-    //
-    //     rt.spawn(task);
-    // }
-
 
     println!("DONE")
 }
