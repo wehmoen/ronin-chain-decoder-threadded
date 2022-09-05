@@ -25,9 +25,16 @@ struct Opt {
 }
 
 async fn thread_work(params: DecodeParameter) {
+    let out_path = ["out", &params.tx.block.to_string(), &params.tx.hash.clone()[2..]].join("/");
+
+    let out_path = std::path::Path::new(&out_path);
+    if !out_path.exists() {
+        std::fs::create_dir_all(&out_path).unwrap();
+    }
+
     let key = [
-        ["out", &params.tx.block.to_string(), &params.tx.hash.clone()[2..]].join("/"),
-        "json".into()
+        out_path.to_str().unwrap(),
+        "json"
     ].join(".");
     let key = key.as_str();
 
