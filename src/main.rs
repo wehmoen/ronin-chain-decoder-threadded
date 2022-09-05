@@ -25,7 +25,7 @@ struct Opt {
 }
 
 async fn thread_work(params: DecodeParameter) {
-    let out_path = ["out", &params.tx.block.to_string(), &params.tx.hash.clone()[2..]].join("/");
+    let out_path = ["out", &params.tx.block.to_string()].join("/");
     // ./out/12345/ashdaisdaiusdiuasd/
     let out_path_str = out_path.clone();
     let out_path = std::path::Path::new(&out_path);
