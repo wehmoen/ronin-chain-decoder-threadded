@@ -66,8 +66,6 @@ async fn main() {
     let db = Database::new("mongodb://127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+1.5.4", Some(&db_name)).await;
 
     let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
-        .max_blocking_threads(4)
         .enable_io().enable_time()
         .thread_name("decoder-thread")
         .build().unwrap();
