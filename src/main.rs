@@ -89,7 +89,7 @@ async fn main() {
     let pb = ProgressBar::new(tx_in_db);
 
     pb.set_style(
-        ProgressStyle::default_spinner().template("{spinner}{bar:80.cyan/blue} {percent:>3}% | [{eta_precise}][{elapsed_precise}] ETA/Elapsed | {msg}{pos:>5}/{len:4}").unwrap()
+        ProgressStyle::default_spinner().template("{spinner}{bar:80.cyan/blue} {percent:>3}% | [{eta_precise}][{elapsed_precise}] ETA/Elapsed | {msg}{pos:>12}/{len:12}").unwrap()
     );
 
     let mut things: Vec<JoinHandle<()>> = vec![];
