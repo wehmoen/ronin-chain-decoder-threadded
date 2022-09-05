@@ -4,6 +4,8 @@ use tokio::task::JoinHandle;
 use crate::mongodb::{Database, Transaction};
 use crate::roninrest::{Adapter, RRDecodedTransaction};
 
+use indicatif::{ProgressBar, ProgressStyle};
+
 mod mongodb;
 mod roninrest;
 
@@ -26,7 +28,6 @@ struct Opt {
 
 async fn thread_work(params: DecodeParameter) {
     let out_path = ["out", &params.tx.block.to_string()].join("/");
-    // ./out/12345/ashdaisdaiusdiuasd/
     let out_path_str = out_path.clone();
     let out_path = std::path::Path::new(&out_path);
     if !out_path.exists() {
@@ -82,13 +83,19 @@ async fn main() {
         .thread_name("decoder-thread")
         .build().unwrap();
 
-    let mut index: i32 = 0;
+    let tx_in_db = db.estimate_remaining().await.unwrap();
     let limit: usize = 500;
+
+    let pb = ProgressBar::new(tx_in_db);
+
+    pb.set_style(
+        ProgressStyle::default_spinner().template("{spinner}{bar:80.cyan/blue} {percent:>3}% | [{eta_precise}][{elapsed_precise}] ETA/Elapsed | {msg}{pos:>5}/{len:4}").unwrap()
+    );
 
     let mut things: Vec<JoinHandle<()>> = vec![];
     let mut close_on_loop_end: bool = false;
     loop {
-        while things.len()  < limit {
+        while things.len() < limit {
             if let Some(tx) = db.one_transaction().await.unwrap() {
                 let task = thread_work(DecodeParameter
                 {
@@ -97,7 +104,8 @@ async fn main() {
                 });
 
                 things.push(rt.spawn(task));
-                index += 1;
+                pb.set_message(tx.hash);
+                pb.inc(1);
             } else {
                 close_on_loop_end = true
             }
@@ -108,13 +116,11 @@ async fn main() {
         }
 
         things.clear();
-        println!("Done: {}", index * 100);
 
         if close_on_loop_end {
             break;
         }
-
     }
 
-    println!("DONE")
+    pb.finish_with_message("DONE!!!!");
 }

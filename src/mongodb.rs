@@ -30,4 +30,8 @@ impl Database {
     pub async fn one_transaction(&self) -> mongodb::error::Result<Option<Transaction>> {
         self.transactions.find_one_and_delete(doc!{}, None).await
     }
+
+    pub async fn estimate_remaining(&self) -> mongodb::error::Result<u64> {
+        self.transactions.estimated_document_count(None).await
+    }
 }
